@@ -1,0 +1,413 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ast
+---
+apiVersion: v1
+data:
+  BIGIP_PASSWORD_1: admin
+kind: ConfigMap
+metadata:
+  labels:
+    io.kompose.service: otel-collector-env-device-secrets
+  name: env-device-secrets
+  namespace: ast
+---
+apiVersion: v1
+data:
+  GF_SECURITY_ADMIN_PASSWORD: admin
+  GF_SECURITY_ADMIN_USER: admin
+  SENSOR_ID: YOUR_ID
+  SENSOR_SECRET_TOKEN: YOUR_TOKEN
+kind: ConfigMap
+metadata:
+  labels:
+    io.kompose.service: grafana-env
+  name: env
+  namespace: ast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bigip-scraper-config
+  namespace: ast
+data:
+  bigip-scraper-config.yaml: |
+    receivers: ${file:/etc/otel-collector-config/receivers.yaml}
+
+    processors:
+      batch/local:
+      batch/f5-datafabric:
+        send_batch_max_size: 8192
+      interval/f5-datafabric:
+        interval: 300s
+      attributes/f5-datafabric:
+        actions:
+          - key: dataType
+            action: upsert
+            value: bigip-ast-metric
+
+    exporters:
+      otlphttp/metrics-local:
+        endpoint: http://prometheus.ast.svc.cluster.local:9090/api/v1/otlp #http://prometheus:9090/api/v1/otlp
+      otlp/f5-datafabric:
+        endpoint: us.edge.df.f5.com:443
+        headers:
+          Authorization: "kovacs ${env:SENSOR_ID} ${env:SENSOR_SECRET_TOKEN}"
+          X-F5-OTEL: "GRPC"
+        tls:
+          insecure: false
+          ca_file: /etc/ssl/certs/ca-certificates.pem
+      debug/bigip:
+        verbosity: basic
+        sampling_initial: 5
+        sampling_thereafter: 200
+
+    service:
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: '0.0.0.0'
+                    port: 8888
+      pipelines: ${file:/etc/otel-collector-config/pipelines.yaml}
+
+  receivers.yaml: |
+    bigip/1:
+      collection_interval: 60s
+      data_types:
+        f5.apm:
+          enabled: true
+        f5.cgnat:
+          enabled: true
+        f5.dns:
+          enabled: true
+        f5.dos:
+          enabled: true
+        f5.firewall:
+          enabled: true
+        f5.gtm:
+          enabled: true
+        f5.policy.api_protection:
+          enabled: true
+        f5.policy.asm:
+          enabled: true
+        f5.policy.firewall:
+          enabled: true
+        f5.policy.ip_intelligence:
+          enabled: false
+        f5.policy.nat:
+          enabled: false
+        f5.profile.dos:
+          enabled: true
+      endpoint: https://192.168.0.249
+      password: ${env:BIGIP_PASSWORD_1}
+      timeout: 60s
+      tls:
+        ca_file: ''
+        insecure_skip_verify: true
+      username: admin
+
+  pipelines.yaml: |
+    metrics/local:
+      exporters:
+      - otlphttp/metrics-local
+      - debug/bigip
+      processors:
+      - batch/local
+      receivers:
+      - bigip/1
+---
+apiVersion: v1
+data:
+  prometheus.yml: |-
+    global:
+      scrape_interval: 1m
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        scrape_interval: 1m
+        static_configs:
+          - targets: ['prometheus.ast.svc.cluster.local:9090']
+      - job_name: 'otel-collector'
+        scrape_interval: 30s
+        static_configs:
+          - targets: ['otel-collector.ast.svc.cluster.local:8888']
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: prometheus
+  name: prometheus-cm0
+  namespace: ast
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: grafana
+  name: grafana
+  namespace: ast
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: prometheus
+  name: prometheus
+  namespace: ast
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.34.0 (cbf2835db)
+  labels:
+    io.kompose.service: otel-collector
+  name: otel-collector
+  namespace: ast
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: otel-collector
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert
+        kompose.version: 1.34.0 (cbf2835db)
+      labels:
+        io.kompose.service: otel-collector
+    spec:
+      containers:
+        - args:
+            # Changed path to match the mount location
+            - --config=/etc/otel-collector-config/bigip-scraper-config.yaml
+          env:
+            - name: BIGIP_PASSWORD_1
+              valueFrom:
+                configMapKeyRef:
+                  key: BIGIP_PASSWORD_1
+                  name: env-device-secrets
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  key: GF_SECURITY_ADMIN_PASSWORD
+                  name: env
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                configMapKeyRef:
+                  key: GF_SECURITY_ADMIN_USER
+                  name: env
+            - name: SENSOR_ID
+              valueFrom:
+                configMapKeyRef:
+                  key: SENSOR_ID
+                  name: env
+            - name: SENSOR_SECRET_TOKEN
+              valueFrom:
+                configMapKeyRef:
+                  key: SENSOR_SECRET_TOKEN
+                  name: env
+          image: ghcr.io/f5devcentral/application-study-tool/otel_custom_collector@sha256:bcb5faa7489849c0ea36ec645a77b50203dbe7378af1bc6e9ebc923430cce634
+          name: otel-collector
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/otel-collector-config
+      volumes:
+        - name: config-volume
+          configMap:
+            name: bigip-scraper-config
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.34.0 (cbf2835db)
+  labels:
+    io.kompose.service: otel-collector
+  name: otel-collector
+  namespace: ast
+spec:
+  ports:
+    - name: "8888"
+      port: 8888
+      targetPort: 8888
+  selector:
+    io.kompose.service: otel-collector
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.34.0 (cbf2835db)
+  labels:
+    io.kompose.service: grafana
+  name: grafana
+  namespace: ast
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: grafana
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert
+        kompose.version: 1.34.0 (cbf2835db)
+      labels:
+        io.kompose.service: grafana
+    spec:
+      containers:
+        - env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  key: GF_SECURITY_ADMIN_PASSWORD
+                  name: env
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                configMapKeyRef:
+                  key: GF_SECURITY_ADMIN_USER
+                  name: env
+            - name: SENSOR_ID
+              valueFrom:
+                configMapKeyRef:
+                  key: SENSOR_ID
+                  name: env
+            - name: SENSOR_SECRET_TOKEN
+              valueFrom:
+                configMapKeyRef:
+                  key: SENSOR_SECRET_TOKEN
+                  name: env
+          image: grafana/grafana@sha256:6128afd8174f01e39a78341cb457588f723bbb9c3b25c4d43c4b775881767069
+          name: grafana
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /var/lib/grafana
+              name: grafana
+      restartPolicy: Always
+      volumes:
+        - name: grafana
+          persistentVolumeClaim:
+            claimName: grafana
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.34.0 (cbf2835db)
+  labels:
+    io.kompose.service: grafana
+  name: grafana
+  namespace: ast
+spec:
+  ports:
+    - name: "3000"
+      port: 3000
+      targetPort: 3000
+  selector:
+    io.kompose.service: grafana
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.34.0 (cbf2835db)
+  labels:
+    io.kompose.service: prometheus
+  name: prometheus
+  namespace: ast
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: prometheus
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert
+        kompose.version: 1.34.0 (cbf2835db)
+      labels:
+        io.kompose.service: prometheus
+    spec:
+      containers:
+        - args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --web.console.libraries=/etc/prometheus/console_libraries
+            - --web.console.templates=/etc/prometheus/consoles
+            - --web.enable-lifecycle
+            - --enable-feature=otlp-write-receiver
+            - --storage.tsdb.retention.time=1y
+          image: prom/prometheus@sha256:7a34573f0b9c952286b33d537f233cd5b708e12263733aa646e50c33f598f16c
+          name: prometheus
+          ports:
+            - containerPort: 9090
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /etc/prometheus/prometheus.yml
+              name: prometheus-cm0
+              subPath: prometheus.yml
+            - mountPath: /prometheus
+              name: prometheus
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 300
+      volumes:
+        - configMap:
+            items:
+              - key: prometheus.yml
+                path: prometheus.yml
+            name: prometheus-cm0
+          name: prometheus-cm0
+        - name: prometheus
+          persistentVolumeClaim:
+            claimName: prometheus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.34.0 (cbf2835db)
+  labels:
+    io.kompose.service: prometheus
+  name: prometheus
+  namespace: ast
+spec:
+  ports:
+    - name: "9090"
+      port: 9090
+      targetPort: 9090
+  selector:
+    io.kompose.service: prometheus
