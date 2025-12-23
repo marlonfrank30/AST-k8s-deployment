@@ -243,6 +243,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-datasources
+  namespace: ast
   labels:
     io.kompose.service: grafana
 data:
@@ -438,3 +439,4 @@ spec:
   selector:
 
     io.kompose.service: prometheus
+
