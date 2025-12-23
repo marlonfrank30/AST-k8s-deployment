@@ -238,6 +238,27 @@ spec:
           configMap:
             name: bigip-scraper-config
       restartPolicy: Always
+---      
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  labels:
+    io.kompose.service: grafana
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        orgId: 1
+        url: 'http://prometheus.ast.svc.cluster.local:9090' #http://prometheus:9090
+        basicAuth: false
+        isDefault: true
+        editable: true
+        jsonData:
+          timeInterval: 60s
 ---
 apiVersion: v1
 kind: Service
@@ -312,11 +333,16 @@ spec:
           volumeMounts:
             - mountPath: /var/lib/grafana
               name: grafana
+            - mountPath: /etc/grafana/provisioning/datasources
+              name: grafana-datasources
       restartPolicy: Always
       volumes:
         - name: grafana
           persistentVolumeClaim:
             claimName: grafana
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
 ---
 apiVersion: v1
 kind: Service
@@ -410,4 +436,5 @@ spec:
       port: 9090
       targetPort: 9090
   selector:
+
     io.kompose.service: prometheus
