@@ -133,9 +133,9 @@ kubectl apply -f config/application-study-tool.yaml
 
 This will create:
 - Namespace: `ast`
-- ConfigMaps (4)
+- ConfigMaps (5)
 - PersistentVolumeClaims (2)
-- Deployments (3)
+- Deployments (4)
 - Services (3)
 
 ### 2. **Verify Deployment**
