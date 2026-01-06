@@ -349,7 +349,10 @@ spec:
             name: grafana-datasources
         - name: grafana-dashboards
           configMap:
-            name: grafana-dashboards    
+            name: grafana-dashboards
+        - name: grafana-dashboards-providers
+          configMap:
+            name: grafana-dashboards-providers            
 ---
 apiVersion: v1
 kind: Service
@@ -449,7 +452,8 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-dashboards
+  name: grafana-dashboards-providers
+  namespace: ast
   labels:
     io.kompose.service: grafana
 data:
@@ -3573,5 +3577,6 @@ data:
   "uid": "adpz4tutl28e8f",
   "version": 2
 }
+
 
 
