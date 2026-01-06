@@ -473,6 +473,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboards
+  namespace: ast
   labels:
     grafana_dashboard: "1"
 data:
@@ -1505,6 +1506,7 @@ data:
                       "index": 2,
                       "text": "None Configured"
                     }
+
 
 
 
