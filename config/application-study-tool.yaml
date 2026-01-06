@@ -336,10 +336,11 @@ spec:
               name: grafana
             - mountPath: /etc/grafana/provisioning/datasources
               name: grafana-datasources
-            - mountPath: /etc/grafana/provisioning/dashboards    
+            - mountPath: /etc/grafana/provisioning/dashboards  
               name: grafana-dashboards
-            - mountPath: /etc/grafana/provisioning/dashboards/provider
-              name: grafana-dashboards-providers  
+            - mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml 
+              name: grafana-dashboards-providers
+              subPath: dashboard.yaml
              
       restartPolicy: Always
       volumes:
@@ -1508,6 +1509,7 @@ data:
                       "index": 2,
                       "text": "None Configured"
                     }
+
 
 
 
