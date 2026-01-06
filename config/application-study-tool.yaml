@@ -340,7 +340,7 @@ spec:
               name: grafana-dashboards
             - mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml 
               name: grafana-dashboards-providers
-              subPath: dashboard.yaml
+              subPath: dashboards.yaml
              
       restartPolicy: Always
       volumes:
@@ -1509,6 +1509,7 @@ data:
                       "index": 2,
                       "text": "None Configured"
                     }
+
 
 
 
